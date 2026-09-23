@@ -110,6 +110,7 @@ describe("routing policy", () => {
     });
     const result = await routeSubmission(example, submission, { jev });
     expect(result.status).toBe("FAIL");
+    expect(result.reason).toBe("gateway-access");
     expect(result.destination).toBeNull();
   });
 

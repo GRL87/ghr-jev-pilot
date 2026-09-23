@@ -326,7 +326,7 @@ describe("Gateway authentication", () => {
       const result = await processSubmission(makeSubmission(true));
 
       expect(result).toMatchObject({
-        decision: { destination: null, status: "FAIL" },
+        decision: { destination: null, reason: "gateway-auth", status: "FAIL" },
         status: "success",
       });
       expect(gatewayFetch).toHaveBeenCalledTimes(1);

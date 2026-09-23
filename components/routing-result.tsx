@@ -215,8 +215,17 @@ const ResultContent = ({
 }) => {
   if (result?.status === "success") {
     const { decision } = result;
+    let failureText =
+      "Jev rejected the request or returned an invalid destination. No destination was assigned.";
+    if (decision.reason === "gateway-auth") {
+      failureText =
+        "AI Gateway authentication failed. Check this Production deployment's credentials.";
+    } else if (decision.reason === "gateway-access") {
+      failureText =
+        "AI Gateway denied access to Jev. Check model access and billing.";
+    }
     const outcomeText = {
-      FAIL: "Jev returned an invalid result or access was denied. No destination was assigned.",
+      FAIL: failureText,
       OWNER_REQUIRED:
         "Jev did not meet the confidence threshold. Owner review is required.",
       PASS: "Jev assigned a destination.",

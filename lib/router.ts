@@ -13,6 +13,9 @@ type RoutingReason =
   | "low-confidence"
   | "missing-confidence"
   | "jev-error"
+  | "jev-bad-request"
+  | "gateway-auth"
+  | "gateway-access"
   | "invalid-destination"
   | null;
 
@@ -141,14 +144,20 @@ export const routeSubmission = async (
   } catch (error) {
     decision.timings.jevMs = Math.round(performance.now() - jevStart);
     const statusCode = z.object({ statusCode: z.number() }).safeParse(error);
+    const code = statusCode.success ? statusCode.data.statusCode : null;
+    let reason: RoutingReason = "jev-error";
+    if (code === 401) {
+      reason = "gateway-auth";
+    } else if (code === 403) {
+      reason = "gateway-access";
+    } else if (code === 400) {
+      reason = "jev-bad-request";
+    }
     return {
       ...decision,
-      reason: "jev-error",
+      reason,
       status:
-        statusCode.success &&
-        [400, 401, 403].includes(statusCode.data.statusCode)
-          ? "FAIL"
-          : "RETRY",
+        code !== null && [400, 401, 403].includes(code) ? "FAIL" : "RETRY",
     };
   }
 };
