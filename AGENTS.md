@@ -1,6 +1,6 @@
 # Agent instructions
 
-This is a Next.js 16 / React 19 template for routing three forms with Jev and AI SDK, with an independent fallback model and optional Resend delivery. Use [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, data flow, and runtime boundaries. Use [README.md](README.md) for local setup and service configuration.
+This is a Next.js 16 / React 19 Jev-only pilot for routing three forms, with optional Resend delivery. Use [ARCHITECTURE.md](ARCHITECTURE.md) for the module map, data flow, and runtime boundaries. Use [README.md](README.md) for local setup and service configuration.
 
 ## Setup and commands
 
@@ -34,9 +34,9 @@ Forms and samples can be inspected without credentials. Live routing requires Ga
 
 - Infer ownership from the complete submission. Do not replace this with a user-selected team or a deterministic company-size rule.
 - Accept Jev only when its registered answer has valid, unrounded confidence at least `0.95` from `providerMetadata.typesafe.confidence.destination`. Never substitute selected-option probability for confidence.
-- Low, missing, or invalid confidence, or a Jev failure, invokes `openai/gpt-6-luna-fast`. Pass the same state and criteria without Jev's answer. The fallback destination is final, including disagreements. Do not invent a comparable fallback confidence or add another review loop.
+- Low, missing, or invalid confidence returns `OWNER_REQUIRED`. Transient Jev failure returns `RETRY`; invalid destination or access denial returns `FAIL`. No second model is called. Non-`PASS` results assign no owner or email.
 - Validate model destinations against the current example. Keep provider timeouts and retries bounded. If routing fails, send no email.
-- Keep Jev statistics attached to its original answer when displaying a fallback decision. Samples populate inputs and must not supply prerecorded results.
+- Keep available Jev statistics attached to the decision. Samples populate inputs and must not supply prerecorded results.
 - Email delivery requires explicit opt-in and valid configuration for every destination on that form. Resolve the recipient from the server map and use only the validated submitter email as `replyTo`.
 - Preserve successful routing when email delivery fails. Report Resend acceptance separately from inbox delivery. Retry a send with the same payload and idempotency key. A new manual submission is a new operation.
 
@@ -70,7 +70,7 @@ Ultracite configures Oxlint and Oxfmt in `oxlint.config.ts` and `oxfmt.config.ts
 ## Verification and handoff
 
 - For routing or workflow changes, add focused tests to `lib/router.test.ts` or `lib/submission.test.ts`. Use AI SDK mocks or injected dependencies for routing and mock Resend for delivery. Exercise real application logic rather than mocking the module under test.
-- Cover changed confidence boundaries, invalid metadata or output, independent fallback decisions, validation, recipient selection, and retry behavior. Keep tests deterministic, with assertions inside tests and no committed `.only` or `.skip`.
+- Cover changed confidence boundaries, invalid metadata or output, all four statuses, validation, recipient selection, and retry behavior. Keep tests deterministic, with assertions inside tests and no committed `.only` or `.skip`.
 - For code changes, run `pnpm fix`, inspect the diff, then `pnpm validate` and `pnpm build`. Report any check that could not run or failed. Browser checks are manual, and live model checks require available credentials.
 - For documentation-only changes, check the touched Markdown with `pnpm exec oxfmt <files> --check` and run `git diff --check`. Verify commands and links without running account provisioning or email sends.
 - Keep README setup instructions and the architecture overview aligned with code changes. Prefer official Vercel, AI SDK, TypeSafe, and Resend documentation for integration details.

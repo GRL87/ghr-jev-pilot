@@ -29,7 +29,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { destinationLabel } from "@/lib/examples";
 import type { Example } from "@/lib/examples";
-import type { FallbackReason, RoutingDecision } from "@/lib/router";
+import type { RoutingDecision } from "@/lib/router";
 import type { SubmissionResult } from "@/lib/submission";
 
 const percent = (value: number | null | undefined): string =>
@@ -133,13 +133,10 @@ const DecisionDetails = ({
         )}
         <p className="text-muted-foreground text-sm leading-relaxed">
           Confidence measures how concentrated Jev’s distribution is. The choice
-          probability belongs to Jev’s original selection, even when Luna makes
-          the final decision.
+          probability is separate from the routing confidence.
         </p>
         <p className="text-muted-foreground text-sm">
           Jev: {decision.timings.jevMs} ms
-          {decision.timings.lunaMs !== null &&
-            ` · Luna: ${decision.timings.lunaMs} ms`}
         </p>
         <details>
           <summary className="text-muted-foreground cursor-pointer text-sm outline-none focus-visible:underline">
@@ -158,32 +155,33 @@ const EmailPreview = ({
   result,
 }: {
   result: Extract<SubmissionResult, { status: "success" }>;
-}) => (
-  <details className="group border-t">
-    <summary className={disclosureClass}>
-      <DisclosureLabel>Email preview</DisclosureLabel>
-    </summary>
-    <div className="flex flex-col gap-4 pb-5">
-      <dl className="flex flex-col gap-1 text-sm">
-        <dt className="text-muted-foreground">Subject</dt>
-        <dd>{result.email.subject}</dd>
-      </dl>
-      <iframe
-        title="Notification email preview"
-        srcDoc={result.email.html}
-        sandbox=""
-        referrerPolicy="no-referrer"
-        className="h-80 w-full border"
-        loading="lazy"
-      />
-      {result.delivery.status === "accepted" && (
-        <p className="text-muted-foreground text-sm">
-          Accepted by Resend. Inbox delivery is not yet confirmed.
-        </p>
-      )}
-    </div>
-  </details>
-);
+}) =>
+  result.email && (
+    <details className="group border-t">
+      <summary className={disclosureClass}>
+        <DisclosureLabel>Email preview</DisclosureLabel>
+      </summary>
+      <div className="flex flex-col gap-4 pb-5">
+        <dl className="flex flex-col gap-1 text-sm">
+          <dt className="text-muted-foreground">Subject</dt>
+          <dd>{result.email.subject}</dd>
+        </dl>
+        <iframe
+          title="Notification email preview"
+          srcDoc={result.email.html}
+          sandbox=""
+          referrerPolicy="no-referrer"
+          className="h-80 w-full border"
+          loading="lazy"
+        />
+        {result.delivery.status === "accepted" && (
+          <p className="text-muted-foreground text-sm">
+            Accepted by Resend. Inbox delivery is not yet confirmed.
+          </p>
+        )}
+      </div>
+    </details>
+  );
 
 const DecisionMetric = ({
   label,
@@ -216,41 +214,39 @@ const ResultContent = ({
   pending: boolean;
 }) => {
   if (result?.status === "success") {
-    const fallbackLabels: Record<FallbackReason, string> = {
-      "jev-error": "Jev’s evaluation could not be completed.",
-      "low-confidence": `Jev’s confidence was below ${percent(result.decision.threshold)}.`,
-      "missing-confidence": "Jev’s confidence was unavailable.",
-    };
+    const { decision } = result;
+    const outcomeText = {
+      FAIL: "Jev returned an invalid result or access was denied. No destination was assigned.",
+      OWNER_REQUIRED:
+        "Jev did not meet the confidence threshold. Owner review is required.",
+      PASS: "Jev assigned a destination.",
+      RETRY: "Jev could not complete the evaluation. Please retry later.",
+    }[decision.status];
     return (
       <>
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
             <h3 className="text-3xl font-medium tracking-tight">
-              {result.decision.destination.team}
+              {decision.status}
             </h3>
-            <p className="text-base">{result.decision.destination.specialty}</p>
-            <p className="text-muted-foreground text-sm">
-              Selected by{" "}
-              {result.decision.model === "typesafe-ai/jev" ? "Jev" : "Luna"}
-            </p>
+            <p className="text-base">{outcomeText}</p>
+            {decision.destination && (
+              <p className="text-base">
+                {decision.destination.team} · {decision.destination.specialty}
+              </p>
+            )}
+            <p className="text-muted-foreground text-sm">Evaluated by Jev</p>
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
             <DecisionMetric
               label="Jev confidence"
-              value={result.decision.jev?.confidence}
+              value={decision.jev?.confidence}
             />
             <DecisionMetric
               label="Jev choice probability"
-              value={result.decision.jev?.selectedProbability}
+              value={decision.jev?.selectedProbability}
             />
           </dl>
-          {result.decision.fallbackReason && (
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              {fallbackLabels[result.decision.fallbackReason]} Luna
-              independently reviewed the request and supplied the final
-              decision.
-            </p>
-          )}
           {result.delivery.status === "failed" && (
             <Alert variant="destructive">
               <AlertTitle>Email not confirmed</AlertTitle>

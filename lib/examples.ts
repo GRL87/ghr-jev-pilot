@@ -52,7 +52,7 @@ const identityFields = [
 
 const sampleIdentity = { email: "alex@example.com", name: "Alex Morgan" };
 
-/** Three examples, with criteria shared verbatim between Jev and Luna. */
+/** Three examples, with criteria supplied to Jev. */
 export const examples = {
   contact: {
     description: "Share your question and any useful account details.",

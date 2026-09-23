@@ -257,7 +257,7 @@ export const RouterForm = ({
         <div aria-live="polite" aria-atomic="true" className="sr-only">
           {pending ? "Routing your submission." : null}
           {result?.status === "success"
-            ? `Routing complete. ${result.decision.destination.team}, ${result.decision.destination.specialty}.`
+            ? `Routing result: ${result.decision.status}.${result.decision.destination ? ` ${result.decision.destination.team}, ${result.decision.destination.specialty}.` : ""}`
             : null}
         </div>
         <RoutingResult example={example} result={result} pending={pending} />

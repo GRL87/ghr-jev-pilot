@@ -34,7 +34,7 @@ export type SubmissionResult =
   | {
       status: "success";
       decision: RoutingDecision;
-      email: { subject: string; html: string };
+      email: { subject: string; html: string } | null;
       delivery: Delivery;
     };
 
@@ -84,7 +84,7 @@ const deliverEmail = async (
   submissionId: string,
   mapping: RecipientMap
 ): Promise<Delivery> => {
-  const to = mapping[decision.destination.id];
+  const to = decision.destination && mapping[decision.destination.id];
   const from = process.env.RESEND_FROM;
   if (!isEmailConfigured(example, mapping) || !to || !from) {
     return {
@@ -202,7 +202,7 @@ export const processSubmission = async (
     if (forbidden.success) {
       return {
         message:
-          "AI Gateway denied access to openai/gpt-6-luna-fast. Check this Gateway account’s model access and paid-credit configuration, then try again. No email was sent.",
+          "AI Gateway denied access to typesafe-ai/jev. Check this Gateway account’s model access and paid-credit configuration, then try again. No email was sent.",
         status: "error",
       };
     }
@@ -210,6 +210,14 @@ export const processSubmission = async (
       message:
         "We couldn’t complete the routing review. Check your Gateway configuration or try again. No email was sent.",
       status: "error",
+    };
+  }
+  if (decision.status !== "PASS" || !decision.destination) {
+    return {
+      decision,
+      delivery: { status: "preview" },
+      email: null,
+      status: "success",
     };
   }
   const email = {
@@ -222,7 +230,6 @@ export const processSubmission = async (
           label: field.label,
           value: parsed.data[field.name],
         })),
-        model: decision.model,
         selectedProbability: decision.jev?.selectedProbability ?? null,
       })
     ),

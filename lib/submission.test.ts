@@ -35,7 +35,6 @@ const contactRecipients: RecipientMap = {
 };
 const decision: RoutingDecision = {
   destination: example.destinations[0],
-  fallbackReason: null,
   jev: {
     confidence: 0.97,
     destination: example.destinations[0].id,
@@ -43,8 +42,10 @@ const decision: RoutingDecision = {
     selectedProbability: 0.99,
   },
   model: "typesafe-ai/jev",
+  reason: null,
+  status: "PASS",
   threshold: 0.95,
-  timings: { jevMs: 42, lunaMs: null },
+  timings: { jevMs: 42 },
 };
 const route = vi.fn(() => Promise.resolve(decision));
 
@@ -88,9 +89,7 @@ describe("submission workflow", () => {
       });
     });
     expect(result).toMatchObject({
-      message: expect.stringContaining(
-        "denied access to openai/gpt-6-luna-fast"
-      ),
+      message: expect.stringContaining("denied access to typesafe-ai/jev"),
       status: "error",
     });
     expect(JSON.stringify(result)).not.toContain("Private provider response");
@@ -102,6 +101,10 @@ describe("submission workflow", () => {
     const result = await processSubmission(data, route, contactRecipients);
     expect(result.status).toBe("success");
     if (result.status === "success") {
+      expect(result.email).not.toBeNull();
+      if (!result.email) {
+        throw new Error("PASS must include an email preview");
+      }
       expect(result.delivery.status).toBe("preview");
       expect(result.email.html).toContain("&lt;script&gt;");
       expect(result.email.html).not.toContain("<script>");
@@ -225,23 +228,19 @@ describe("submission workflow", () => {
     }
   );
 
-  it("uses the final destination's inbox after Luna changes the owner", async () => {
-    send.mockResolvedValue({ data: { id: "email-luna" }, error: null });
+  it("does not send email when owner review is required", async () => {
     await processSubmission(
       makeSubmission(true),
       () =>
         Promise.resolve<RoutingDecision>({
           ...decision,
-          destination: example.destinations[2],
-          fallbackReason: "low-confidence",
-          model: "openai/gpt-6-luna-fast",
+          destination: null,
+          reason: "low-confidence",
+          status: "OWNER_REQUIRED",
         }),
       contactRecipients
     );
-    expect(send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: "access@example.com" }),
-      expect.any(Object)
-    );
+    expect(send).not.toHaveBeenCalled();
   });
 });
 
@@ -272,49 +271,30 @@ describe("Gateway authentication", () => {
           get: () => ({ headers: { "x-vercel-oidc-token": oidcToken } }),
         });
       }
-      const gatewayFetch = vi
-        .fn<typeof fetch>()
-        .mockResolvedValueOnce(
-          Response.json({
-            answers: {
-              destination: { choice: "billing_invoices", type: "choice" },
-            },
-            providerMetadata: {
-              typesafe: { confidence: { destination: confidence } },
-            },
-          })
-        )
-        .mockResolvedValueOnce(
-          Response.json({
-            content: [
-              {
-                text: JSON.stringify({ destination: "support_access" }),
-                type: "text",
-              },
-            ],
-            finishReason: { raw: "stop", unified: "stop" },
-            usage: {
-              inputTokens: { total: 10 },
-              outputTokens: { total: 5 },
-            },
-          })
-        );
+      const gatewayFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(
+        Response.json({
+          answers: {
+            destination: { choice: "billing_invoices", type: "choice" },
+          },
+          providerMetadata: {
+            typesafe: { confidence: { destination: confidence } },
+          },
+        })
+      );
       vi.stubGlobal("fetch", gatewayFetch);
 
       const result = await processSubmission(makeSubmission());
 
       expect(result).toMatchObject({
         decision: {
-          destination: {
-            id: confidence < 0.95 ? "support_access" : "billing_invoices",
-          },
-          model:
-            confidence < 0.95 ? "openai/gpt-6-luna-fast" : "typesafe-ai/jev",
+          destination: confidence < 0.95 ? null : { id: "billing_invoices" },
+          model: "typesafe-ai/jev",
+          status: confidence < 0.95 ? "OWNER_REQUIRED" : "PASS",
         },
         delivery: { status: "preview" },
         status: "success",
       });
-      expect(gatewayFetch).toHaveBeenCalledTimes(confidence < 0.95 ? 2 : 1);
+      expect(gatewayFetch).toHaveBeenCalledTimes(1);
       for (const [, init] of gatewayFetch.mock.calls) {
         expect(new Headers(init?.headers).get("authorization")).toBe(
           `Bearer ${source === "api-key" ? "test-gateway-key" : oidcToken}`
@@ -325,7 +305,7 @@ describe("Gateway authentication", () => {
   );
 
   it.each(["development", "production"] as const)(
-    "reports actual authentication failures appropriately in %s",
+    "returns FAIL for authentication failure in %s",
     async (environment) => {
       vi.stubEnv("NODE_ENV", environment);
       const gatewayFetch = vi.fn<typeof fetch>().mockImplementation(() =>
@@ -346,20 +326,13 @@ describe("Gateway authentication", () => {
       const result = await processSubmission(makeSubmission(true));
 
       expect(result).toMatchObject({
-        message: expect.stringContaining("AI Gateway authentication failed"),
-        status: "error",
+        decision: { destination: null, status: "FAIL" },
+        status: "success",
       });
-      expect(gatewayFetch).toHaveBeenCalledTimes(2);
+      expect(gatewayFetch).toHaveBeenCalledTimes(1);
       const serialized = JSON.stringify(result);
       expect(serialized).not.toContain("Private provider details");
-      if (environment === "development") {
-        expect(serialized).toContain("AI_GATEWAY_API_KEY");
-        expect(serialized).toContain("vercel env pull .env.local");
-      } else {
-        expect(serialized).toContain("deployment");
-        expect(serialized).not.toContain(".env.local");
-        expect(serialized).not.toContain("restart");
-      }
+      expect(serialized).not.toContain("AI_GATEWAY_API_KEY");
       expect(send).not.toHaveBeenCalled();
     }
   );

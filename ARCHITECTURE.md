@@ -41,21 +41,23 @@ flowchart TD
     Workflow --> Router[Routing policy]
     Router --> Jev[Jev through AI Gateway]
     Jev --> Gate{Valid confidence at least 0.95?}
-    Gate -->|Yes| Final[Final destination]
-    Gate -->|No, missing metadata, or evaluation error| Fallback[GPT-6 Luna Fast through AI Gateway]
-    Fallback -->|Valid destination| Final
-    Fallback -->|Failure| Error[Safe error, no email]
+    Gate -->|Yes| Final[PASS: final destination]
+    Gate -->|Low or missing confidence| Owner[OWNER_REQUIRED: no assignment]
+    Jev -->|Transient error| Retry[RETRY: no assignment]
+    Jev -->|Invalid destination or access denial| Error[FAIL: no assignment]
     Final --> Email[Render React Email preview]
     Email --> OptIn{Email requested and configured?}
     Recipients[Server-only recipient map] --> OptIn
     OptIn -->|Yes| Resend[Await Resend acceptance]
     OptIn -->|No| Result[Routing result and delivery status]
     Resend --> Result
+    Owner --> Result
+    Retry --> Result
+    Error --> Result
     Result --> Browser
-    Error --> Browser
 ```
 
-The registry supplies one choice per team/specialty combination. Both models receive the same validated submission, destination criteria, and routing instructions. The fallback receives no Jev answer or statistics.
+The registry supplies one choice per team/specialty combination. Jev receives the validated submission, destination criteria, and routing instructions. No second model is called.
 
 ## 3. Core components
 
@@ -72,13 +74,13 @@ The registry supplies one choice per team/specialty combination. Both models rec
 
 Jev uses AI SDK's `experimental_evaluate` with `typesafe-ai/jev`. The app accepts a registered destination only when `providerMetadata.typesafe.confidence.destination` is a valid number from 0 to 1 and its unrounded value is at least `0.95`.
 
-Low, missing, or invalid confidence, or a failed Jev evaluation, invokes `openai/gpt-6-luna-fast` through `generateText` and `Output.object`. Its schema allows only the current example's destinations. That answer becomes final even if it disagrees with Jev. There is no generated fallback confidence or further review loop.
+Low, missing, or invalid confidence returns `OWNER_REQUIRED`. A transient Jev error returns `RETRY`; an invalid destination or access denial returns `FAIL`. None assigns an owner or sends email.
 
-Selected-option probability and confidence are separate statistics. Available Jev statistics describe Jev's original decision even when the fallback chooses another owner. Jev has a 12-second timeout and the fallback has a 25-second timeout, each with one SDK retry for retryable failures. Timings measure elapsed calls, including retries. A fallback failure returns a routing error and sends no email.
+Selected-option probability and confidence are separate statistics. Jev has a 12-second timeout and one SDK retry. Its timing includes retries.
 
 ### Result and delivery contracts
 
-`SubmissionResult` is a discriminated union: an error with a safe message and optional field errors, or success with the final decision, rendered email, and delivery status. Delivery is `preview`, `accepted`, or `failed`. A delivery failure preserves the successful routing result. Acceptance by Resend does not establish inbox delivery.
+`SubmissionResult` is a discriminated union: an error with a safe message and optional field errors, or a four-state Jev decision and delivery status. Only `PASS` has a rendered email. Delivery is `preview`, `accepted`, or `failed`. A delivery failure preserves the successful routing result. Acceptance by Resend does not establish inbox delivery.
 
 Delivery requires explicit opt-in, valid Resend credentials and sender, and valid inboxes for every destination on the current form. An opted-in request with incomplete configuration returns a successful routing result with failed delivery. The validated submitter address becomes `replyTo`.
 
@@ -94,11 +96,11 @@ AI Gateway receives validated submission fields for routing. Opted-in email deli
 
 | Integration | Use | Configuration |
 | --- | --- | --- |
-| Vercel AI Gateway via AI SDK | Jev evaluation and independent fallback decision | `AI_GATEWAY_API_KEY` or Vercel OIDC from request context in deployed Functions and `VERCEL_OIDC_TOKEN` locally |
+| Vercel AI Gateway via AI SDK | Jev evaluation only | `AI_GATEWAY_API_KEY` or Vercel OIDC from request context in deployed Functions and `VERCEL_OIDC_TOKEN` locally |
 | Resend SDK | Optional email delivery | `RESEND_API_KEY`, `RESEND_FROM`, and `lib/recipients.ts` |
 | React Email | Local server-side HTML and plain-text rendering | Shared template, no email-service credentials needed for rendering |
 
-The SDK resolves credentials when it makes a model call. Vercel Functions supply OIDC through request context, so missing environment variables do not establish an authentication failure. Actual authentication failures return a safe error, with local setup instructions only in development. Forms and sample loading remain available without credentials. Samples populate fields and always use live routing when submitted. Without email configuration, successful routing still includes a preview. Inbox addresses are code configuration, not environment variables or model output.
+The SDK resolves credentials when it makes a model call. Vercel Functions supply OIDC through request context, so missing environment variables do not establish an authentication failure. Authentication denial returns `FAIL` without exposing provider details. Forms and sample loading remain available without credentials. Samples populate fields and always use live routing when submitted. Without email configuration, `PASS` still includes a preview. Inbox addresses are code configuration, not environment variables or model output.
 
 ## 6. Runtime and infrastructure
 
@@ -118,7 +120,7 @@ Vercel is supported by the authentication and Marketplace setup documented in th
 
 Use Node.js 22+ and pnpm. [Getting started](README.md#getting-started) covers cloning, dependencies, credentials, and local development. The experimental AI SDK dependency is pinned in `package.json`.
 
-Vitest tests live beside the server modules. Routing tests inject AI SDK evaluation and language-model mocks. Workflow tests inject routing and recipient configuration and mock Resend and the `server-only` marker. Authentication tests exercise the real Gateway provider with mocked HTTP responses and a synthetic Vercel request context, covering API keys, local OIDC, and deployed OIDC through both models. Tests also cover confidence boundaries, independent fallback behavior, validation, email escaping, recipient selection, and delivery retries without external calls. Mock decisions verify application policy, not real model classification accuracy.
+Vitest tests live beside the server modules. Routing tests inject a Jev mock. Workflow tests inject routing and recipient configuration and mock Resend and the `server-only` marker. Authentication tests exercise the Gateway provider with mocked HTTP responses and a synthetic Vercel request context, covering API keys, local OIDC, and deployed OIDC. Tests also cover confidence boundaries, all four statuses, validation, email escaping, recipient selection, and delivery retries without external calls. Mock decisions verify application policy, not real model classification accuracy.
 
 Ultracite configures Oxfmt and Oxlint, including Next.js, React, and shadcn rules. `pnpm validate` runs formatting/lint checks, TypeScript, Knip, and tests. `pnpm build` checks the production bundle. Browser accessibility and layout checks are manual, with no checked-in browser test suite.
 
@@ -142,5 +144,5 @@ Keep the current workflow synchronous unless a task explicitly needs background 
 | Triage | A registered owner for unclear, unsupported, or insufficiently specified requests |
 | Confidence | TypeSafe metadata used by the application's acceptance threshold |
 | Selected probability | Jev's probability for its chosen destination, displayed separately from confidence |
-| Fallback | An independent decision from `openai/gpt-6-luna-fast` |
+| OWNER_REQUIRED | Jev confidence did not meet the automatic assignment threshold |
 | OIDC | OpenID Connect, used for Vercel-provided Gateway credentials |

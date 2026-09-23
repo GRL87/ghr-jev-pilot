@@ -12,10 +12,10 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   description:
-    "Three forms. Typed routing decisions with Jev, independent review with AI SDK, and optional email delivery with Resend.",
+    "GHR Jev Pilot v0.1. Jev-only routing with PASS, RETRY, OWNER_REQUIRED, and FAIL outcomes.",
   title: {
-    default: "Jev x AI SDK Form Router",
-    template: "%s · Jev x AI SDK Form Router",
+    default: "GHR Jev Pilot v0.1",
+    template: "%s · GHR Jev Pilot v0.1",
   },
 };
 
@@ -36,11 +36,11 @@ const RootLayout = ({ children }: Readonly<{ children: React.ReactNode }>) => (
                 href="/leads"
                 className="focus-visible:ring-ring rounded-sm outline-none focus-visible:ring-2"
               >
-                Form Router
+                GHR Jev Pilot v0.1
               </Link>
             </h1>
             <p className="text-muted-foreground text-sm leading-5">
-              Jev and AI SDK
+              Jev-only form routing
             </p>
           </div>
         </div>

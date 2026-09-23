@@ -12,15 +12,11 @@ import {
   Text,
 } from "react-email";
 
-import type { RoutingDecision } from "@/lib/router";
-
 /** Data shared by the browser preview and the actual notification email. */
 export interface RoutedEmailProps {
   example: string;
   /** Display label of the final owner, which may differ from Jev's original choice. */
   destination: string;
-  /** Model that selected the final owner, not necessarily the source of the statistics. */
-  model: RoutingDecision["model"];
   /** Jev's confidence from 0 to 1, or null when unavailable, regardless of the deciding model. */
   confidence: number | null;
   /** Probability of Jev's original choice from 0 to 1, or null when unavailable. Not confidence. */
@@ -76,7 +72,6 @@ const RoutingDetail = ({ label, value }: { label: string; value: string }) => (
 const RoutedSubmissionEmail = ({
   example = "Lead",
   destination = "Startup · Onboarding",
-  model = "typesafe-ai/jev",
   confidence = 0.97,
   selectedProbability = 0.99,
   fields = previewFields,
@@ -182,10 +177,7 @@ const RoutedSubmissionEmail = ({
           >
             Routing details
           </Heading>
-          <RoutingDetail
-            label="Selected by"
-            value={model === "typesafe-ai/jev" ? "Jev" : "Luna"}
-          />
+          <RoutingDetail label="Selected by" value="Jev" />
           {confidence !== null && (
             <RoutingDetail
               label="Jev confidence"
@@ -207,8 +199,7 @@ const RoutedSubmissionEmail = ({
                 margin: "12px 0 0",
               }}
             >
-              These statistics describe Jev’s evaluation, including when Luna
-              makes the final decision.
+              These statistics describe Jev’s evaluation.
             </Text>
           )}
         </Section>
